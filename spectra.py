@@ -155,7 +155,24 @@ class ProplydData:
 
         print(f"[Nyquist sampling] Factor applied: {N}. New SNR = {np.nanmedian(self.y/self.yerr)}")
 
-        # return self.x, self.y, self.yerr
+    def renormalize(self, factor: float):
+        """
+        Multiply all flux (y) and uncertainty (yerr) values by a constant normalization factor.
+        This is used for re-normalizing the spectrum continuum level. The scaling is cumulative.
+
+        Parameters
+        ----------
+        factor : float
+            The normalization factor to apply to all elements of y and yerr.
+
+        Returns
+        -------
+        None
+        """
+        self.y *= factor
+        self.yerr *= factor
+        self.yerr_scaling *= factor
+        print(f"[renormalize] Spectrum and errors scaled by {factor}. Total flux scaling: {self.yerr_scaling}")
 
 class ModelSpectrum:
     """Parent class to store a model spectrum.
