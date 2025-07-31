@@ -9,6 +9,32 @@ FOLDER_PATTERN = re.compile(
 
 PARAM_ORDER = ['T', 'G', 'Bf', 'vsin']
 
+def filter_missing_by_param(missing, param_index, param_value):
+    """
+    Filters the missing combinations by the given parameter index (0=T, 1=G, etc.) and value.
+    """
+    return [x for x in missing if x[param_index] == param_value]
+
+def print_missing_for_param(path, param_name, value):
+    param_indices = {'T': 0, 'G': 1, 'Bf': 2, 'vsin': 3}
+    param_index = param_indices[param_name]
+    folders = find_all_folders(path)
+    params = [parse_parameters_from_foldername(name) for name in folders]
+    params = [p for p in params if p is not None]
+    axes_vals = [sorted(set(p[i] for p in params)) for i in range(4)]
+    full_grid = build_full_grid(axes_vals)
+    existing = set(params)
+    missing = full_grid - existing
+    missing_tuples = [tuple(x) for x in missing]
+    filtered_missing = filter_missing_by_param(missing_tuples, param_index, value)
+    print(f"\nMissing models for {param_name}={value}:")
+    if not filtered_missing:
+        print(f"No missing combinations for {param_name}={value}.")
+        return
+    for line in compact_grid(filtered_missing, axes_vals, PARAM_ORDER):
+        print(line)
+
+
 def parse_parameters_from_foldername(name):
     m = FOLDER_PATTERN.search(name)
     if not m:
@@ -135,4 +161,5 @@ def main(path='.'):
 
 
 if __name__ == "__main__":
-    main(path='moog-stokes')
+    # main(path='data/moog-stokes')
+    print_missing_for_param('data/moog-stokes', 'G', 200)
