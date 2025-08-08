@@ -105,6 +105,9 @@ class ProplydData:
         self.y = np.roll(y_pad, shift)[p:-p]
         self.y_pad = np.roll(yerr_pad, shift)[p:-p]
 
+
+
+
     def rescale_yerr(self, factor: float):
         """
         Multiply all yerr values by a constant factor, and track cumulative scaling.

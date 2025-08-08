@@ -11,7 +11,7 @@ def chi_squared(ydata: NDArray, yerrdata: NDArray, ymodel: NDArray) -> float:
 
 def compute_moogstokes_chi2_grid(data: ProplydData, Teff_vals: NDArray, logg_vals:
                                  NDArray, rK_vals: NDArray, vsini_vals: NDArray,
-                                 B_vals: NDArray, regions: list[int] | None = None) -> NDArray:
+                                 B_vals: NDArray,shifts: NDArray | None = None, regions: list[int] | None = None) -> NDArray:
     """Computes the chi-squared statistic across a grid of MoogStokes models.
     The models are interpolated to match the x-values of the data.
 
@@ -29,47 +29,58 @@ def compute_moogstokes_chi2_grid(data: ProplydData, Teff_vals: NDArray, logg_val
         Wavelength regions of MoogStokes models to fit. If None, all regions (0
         through 6) will be used.
     
+    shifts: NDArray, optional
+        Shifts in pixels applied to each region. Due to innacuracies in wavelength position
+        of lines, and wavelength calibration of data we expect some pixel level shifts.
     Returns
     -------
     chi2: NDArray
         Chi-squared statistic across the grid of parameters indexed in the order
         (Teff, logg, rK, vsini, B).
     """
+
+
     if regions is None:
         regions = range(7)
 
+    if shifts is None:
+        shifts = np.zeros(len(regions))
+
     chi2 = np.zeros( (len(Teff_vals), len(logg_vals), len(rK_vals), len(vsini_vals), len(B_vals)) )
-    
-    for i,Teff in enumerate(Teff_vals):
-        for j,logg in enumerate(logg_vals):
-            for k,rK in enumerate(rK_vals):
-                for l,vsini in enumerate(vsini_vals):
-                    for m,B in enumerate(B_vals):
-                        
-                        xdata = []
-                        ydata = []
-                        yerrdata = []
-                        ymodel = []
-                        
-                        # Stitch together specified regions
-                        for r in regions:
-                            xlo, xhi = MoogStokesModel.region_xlims(r)
-                            xtemp, ytemp, yerrtemp = data.get_range(xlo, xhi)
-                        
+    chi2_region = np.zeros( (len(Teff_vals), len(logg_vals), len(rK_vals), len(vsini_vals), len(B_vals)) )
+
+    for nn, r in enumerate(regions):
+
+        shift=shifts[nn]
+        data.doppler_shift_data(shift)
+
+        xlo, xhi = MoogStokesModel.region_xlims(r)
+        xdata, ydata, yerrdata = data.get_range(xlo, xhi)
+
+        xdata = np.array(xdata)
+        ydata = np.array(ydata)
+        yerrdata = np.array(yerrdata)
+
+        for i, Teff in enumerate(Teff_vals):
+            for j, logg in enumerate(logg_vals):
+                for k, rK in enumerate(rK_vals):
+                    for l, vsini in enumerate(vsini_vals):
+                        for m, B in enumerate(B_vals):
+
                             model = MoogStokesModel(Teff, logg, rK, B, vsini, r)
-                            ymodeltemp = model.interpolate(xtemp)
-                        
-                            xdata += list(xtemp)
-                            ydata += list(ytemp)
-                            yerrdata += list(yerrtemp)
-                            ymodel +=list(ymodeltemp)
+                            ymodel = model.interpolate(xdata)
+                            ymodel = np.array(ymodel)
 
-                        xdata = np.array(xdata)
-                        ydata = np.array(ydata)
-                        yerrdata = np.array(yerrdata)
-                        ymodel = np.array(ymodel)
+                            chi2_region[i, j, k, l, m] = chi_squared(ydata, yerrdata, ymodel)
 
-                        chi2[i,j,k,l,m] = chi_squared(ydata, yerrdata, ymodel)
+        ### sum chi_squared of different regions
+        chi2 = chi2 + chi2_region
+        chi2_region = np.zeros((len(Teff_vals), len(logg_vals), len(rK_vals), len(vsini_vals), len(B_vals)))
+
+        ### get spectrum back to original position so another shift can be applied to next region
+
+        data.doppler_shift_data(-shift)
+
     return chi2
 
 def best_chi2_grid_params(chi2: NDArray, Teff_vals: NDArray, logg_vals: NDArray,
@@ -275,6 +286,7 @@ def compute_reduced_chi2_bestfit(
 def plot_bestfit_and_residuals(
         data,
         best_params,
+        shifts,
         regions,
         MoogStokesModel=MoogStokesModel,
         obj_name="object",
@@ -309,6 +321,10 @@ def plot_bestfit_and_residuals(
 
     for idx, r in enumerate(regions):
         # Get data in this region
+
+        shift=shifts[idx]
+        data.doppler_shift_data(shift)
+
         xlo, xhi = MoogStokesModel.region_xlims(r)
         xdata, ydata, yerrdata = data.get_range(xlo, xhi)
         model = MoogStokesModel(Teff_best, logg_best, rK_best, B_best, vsini_best, r)
@@ -343,6 +359,8 @@ def plot_bestfit_and_residuals(
         if idx == nrows - 1:
             ax_res.set_xlabel("Wavelength (Å)")
 
+        data.doppler_shift_data(-shift)
+
     fig.suptitle(
         f"{obj_name}: Teff={Teff_best}, logg={logg_best}, rK={round(rK_best,2)}, vsini={vsini_best}, B={B_best}",
         fontsize=14)
@@ -354,3 +372,62 @@ def plot_bestfit_and_residuals(
         f"{outdir}/{obj_name}_Regions{regions}_Teff{Teff_best}_logg{logg_best}_rK{round(rK_best,2)}_vsini{vsini_best}_B{B_best}.png",
         dpi=120, facecolor="white")
     plt.show()
+
+
+def automatic_wavelength_shifts_values(data: ProplydData, Teff: float, logg:
+                                float, rK: float, vsini: float,
+                                 B: float, guess_shift: int, regions: list[int] | None = None) -> NDArray:
+
+    """
+    find the best pixel shifts for a specified number of regions for a given model.
+    The values of the model are not too important as the lines detected and observed are there.
+    :param data: ProplydData
+        Observed data object.
+    :param Teff: 
+    :param logg: 
+    :param rK: 
+    :param vsini: 
+    :param B: 
+    :param guess_shift: guess shift to run the chi2 minimzation 
+    :param regions: 
+    :return: 
+    """
+
+    if regions is None:
+        regions = range(7)
+
+
+    best_shift=np.empty(len(regions))
+
+    shift_array=range(-30+guess_shift,30+guess_shift)
+    chi2 = np.zeros( (len(regions), len(shift_array)) )
+
+    for nn, r in enumerate(regions):
+
+        for ii, shifts in enumerate(shift_array):
+
+            data.doppler_shift_data(shifts)
+
+            xlo, xhi = MoogStokesModel.region_xlims(r)
+            xdata, ydata, yerrdata = data.get_range(xlo, xhi)
+
+            xdata = np.array(xdata)
+            ydata = np.array(ydata)
+            yerrdata = np.array(yerrdata)
+
+            model = MoogStokesModel(Teff, logg, rK, B, vsini, r)
+            ymodel = model.interpolate(xdata)
+            ymodel = np.array(ymodel)
+
+            chi2[nn, ii] = chi_squared(ydata, yerrdata, ymodel)
+
+            ### get spectrum back to original position so another shift can be applied to next region
+            data.doppler_shift_data(-shifts)
+
+
+        this_region_min_chi2=np.nanmin(chi2[nn,:])
+        best_shift[nn]=shift_array[int(np.argmin(chi2[nn,:]))]+guess_shift
+        # print(this_region_min_chi2)
+        # print(best_shift[nn])
+
+    return best_shift
