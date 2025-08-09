@@ -11,7 +11,8 @@ def chi_squared(ydata: NDArray, yerrdata: NDArray, ymodel: NDArray) -> float:
 
 def compute_moogstokes_chi2_grid(data: ProplydData, Teff_vals: NDArray, logg_vals:
                                  NDArray, rK_vals: NDArray, vsini_vals: NDArray,
-                                 B_vals: NDArray,shifts: NDArray | None = None, regions: list[int] | None = None) -> NDArray:
+                                 B_vals: NDArray,renormalization: NDArray | None = None,
+                                 shifts: NDArray | None = None, regions: list[int] | None = None) -> NDArray:
     """Computes the chi-squared statistic across a grid of MoogStokes models.
     The models are interpolated to match the x-values of the data.
 
@@ -29,6 +30,8 @@ def compute_moogstokes_chi2_grid(data: ProplydData, Teff_vals: NDArray, logg_val
         Wavelength regions of MoogStokes models to fit. If None, all regions (0
         through 6) will be used.
     
+    renormalization: list of floats, optional
+        Small changes to the normalization values that can be applied to each region
     shifts: NDArray, optional
         Shifts in pixels applied to each region. Due to innacuracies in wavelength position
         of lines, and wavelength calibration of data we expect some pixel level shifts.
@@ -46,16 +49,21 @@ def compute_moogstokes_chi2_grid(data: ProplydData, Teff_vals: NDArray, logg_val
     if shifts is None:
         shifts = np.zeros(len(regions))
 
+    if renormalization is None:
+        renormalization = np.ones(len(regions))
+
     chi2 = np.zeros( (len(Teff_vals), len(logg_vals), len(rK_vals), len(vsini_vals), len(B_vals)) )
     chi2_region = np.zeros( (len(Teff_vals), len(logg_vals), len(rK_vals), len(vsini_vals), len(B_vals)) )
 
     for nn, r in enumerate(regions):
 
-        shift=shifts[nn]
-        data.doppler_shift_data(shift)
+        data.doppler_shift_data(shifts[nn])
 
         xlo, xhi = MoogStokesModel.region_xlims(r)
         xdata, ydata, yerrdata = data.get_range(xlo, xhi)
+
+        #### Apply the desired normalization
+        ydata, yerrdata = ydata*renormalization[nn] , yerrdata*renormalization[nn]
 
         xdata = np.array(xdata)
         ydata = np.array(ydata)
@@ -79,8 +87,8 @@ def compute_moogstokes_chi2_grid(data: ProplydData, Teff_vals: NDArray, logg_val
 
         ### get spectrum back to original position so another shift can be applied to next region
 
-        data.doppler_shift_data(-shift)
-
+        data.doppler_shift_data(-shifts[nn])
+        print(renormalization[nn])
     return chi2
 
 def best_chi2_grid_params(chi2: NDArray, Teff_vals: NDArray, logg_vals: NDArray,
@@ -286,9 +294,10 @@ def compute_reduced_chi2_bestfit(
 def plot_bestfit_and_residuals(
         data,
         best_params,
-        shifts,
         regions,
         MoogStokesModel=MoogStokesModel,
+        shifts=None,
+        renormalization=None,
         obj_name="object",
         outdir="figures/model_plots",
         ylim=(0.55, 1.1),
@@ -315,8 +324,16 @@ def plot_bestfit_and_residuals(
     """
     Teff_best, logg_best, rK_best, vsini_best, B_best = best_params
 
+
     n_regions = len(regions)
     nrows = n_regions
+
+    if shifts is None:
+        shifts = np.zeros(n_regions)
+
+    if renormalization is None:
+        renormalization = np.ones(n_regions)
+
     fig, axs = plt.subplots(nrows=nrows, ncols=2, figsize=(10, 2.2 * nrows), gridspec_kw={"width_ratios": [3, 2]})
 
     for idx, r in enumerate(regions):
@@ -327,6 +344,7 @@ def plot_bestfit_and_residuals(
 
         xlo, xhi = MoogStokesModel.region_xlims(r)
         xdata, ydata, yerrdata = data.get_range(xlo, xhi)
+        ydata,yerrdata = ydata*renormalization[idx],yerrdata*renormalization[idx]
         model = MoogStokesModel(Teff_best, logg_best, rK_best, B_best, vsini_best, r)
         ymodel = model.interpolate(xdata)
 
@@ -426,7 +444,7 @@ def automatic_wavelength_shifts_values(data: ProplydData, Teff: float, logg:
 
 
         this_region_min_chi2=np.nanmin(chi2[nn,:])
-        best_shift[nn]=shift_array[int(np.argmin(chi2[nn,:]))]+guess_shift
+        best_shift[nn]=shift_array[int(np.nanargmin(chi2[nn,:]))]+guess_shift
         # print(this_region_min_chi2)
         # print(best_shift[nn])
 
