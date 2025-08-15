@@ -107,7 +107,6 @@ class ProplydData:
 
 
 
-
     def rescale_yerr(self, factor: float):
         """
         Multiply all yerr values by a constant factor, and track cumulative scaling.
