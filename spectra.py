@@ -16,6 +16,7 @@ from fnmatch import fnmatch
 from astropy.io import fits
 from numpy.typing import NDArray
 from scipy.signal import savgol_filter
+from spectrograph_functions import instrumental_response
 
 class ProplydData:
     """Stores spectra of science targets.
@@ -68,6 +69,11 @@ class ProplydData:
         self.y = data[1]
         self.yerr = data[2]
         self.yerr_scaling = 1.0   # Add this line
+
+        self._res_backup = None    # store originals if we change resolution
+        self._res_applied = False  # simple guard
+        self._res_params = None    # remember last params (optional)
+
 
     def get_range(self, xlo: float, xhi: float) -> tuple[ NDArray, NDArray, NDArray]:
         """Returns the spectrum confined to a range.
@@ -176,6 +182,62 @@ class ProplydData:
         self.yerr_scaling *= factor
         print(f"[renormalize] Spectrum and errors scaled by {factor}. Total flux scaling: {self.yerr_scaling}")
 
+    def resolution_change(self, *, resolution, Kernel='box',
+                          reference_wavelength=None, force=False, remember_original=True):
+        """
+        Convolve flux (y) in place to a lower resolution. Also propagates yerr by
+        convolving variance and taking sqrt (independent-noise assumption).
+
+        Parameters
+        ----------
+        resolution : float
+            Passed to instrumental_response (your definition of "resolution").
+        Kernel : str
+            'box', 'SPEX', or 'KECK' (same as your function).
+        reference_wavelength : float | None
+            Only needed for 'SPEX' (Gaussian by R at a reference lambda).
+        force : bool
+            If False, refuse to re-apply when already applied.
+        remember_original : bool
+            If True, keep a one-shot backup to allow resolution_reset().
+        """
+        if self._res_applied and not force:
+            print("[resolution_change] Already applied. Use force=True to apply again, or call resolution_reset().")
+            return
+
+        # one-shot backup
+        if remember_original and self._res_backup is None:
+            self._res_backup = (self.y.copy(), self.yerr.copy())
+
+        # convolve flux
+        y_conv = instrumental_response(self.y, self.x, resolution,
+                                       Kernel=Kernel, reference_wavelength=reference_wavelength)
+
+        # propagate uncertainties: convolve variance, then sqrt
+        var = self.yerr**2
+        var_conv = instrumental_response(var, self.x, resolution,
+                                         Kernel=Kernel, reference_wavelength=reference_wavelength)
+        yerr_conv = np.sqrt(np.clip(var_conv, 0, np.inf))
+
+        self.y = y_conv
+        self.yerr = yerr_conv
+
+        self._res_applied = True
+        self._res_params = dict(resolution=resolution, Kernel=Kernel,
+                                reference_wavelength=reference_wavelength)
+        print(f"[resolution_change] Applied ({self._res_params}).")
+
+    def resolution_reset(self):
+        """Restore the pre-convolution y and yerr once (if backup exists)."""
+        if self._res_backup is None:
+            print("[resolution_reset] No backup available (nothing to undo).")
+            return
+        self.y, self.yerr = self._res_backup
+        self._res_backup = None
+        self._res_applied = False
+        self._res_params = None
+        print("[resolution_reset] Restored original spectrum.")
+
 class ModelSpectrum:
     """Parent class to store a model spectrum.
 
@@ -280,7 +342,11 @@ class MoogStokesModel(ModelSpectrum):
         self.x, self.y = self.get_model_data(Teff, logg, B, vsini, region)
         self.apply_veiling(rK)
         self.x *= 1e4  # convert microns to Angstroms
-    
+
+        self._res_backup = None  # store originals if we change resolution
+        self._res_applied = False  # simple guard
+        self._res_params = None  # remember last params (optional)
+
     def get_model_data(self, Teff, logg, B, vsini, region):
         """Retrieves the wavelength, flux data of the MoogStokes model.
     
@@ -318,7 +384,55 @@ class MoogStokesModel(ModelSpectrum):
 
         x, y = np.loadtxt(fname).T
         return x, y
-    
+
+    def resolution_change(self, *, resolution, Kernel='box',
+                          reference_wavelength=None, force=False, remember_original=True):
+        """
+        Convolve flux (y) in place to a lower resolution. Also propagates yerr by
+        convolving variance and taking sqrt (independent-noise assumption).
+
+        Parameters
+        ----------
+        resolution : float
+            Passed to instrumental_response (your definition of "resolution").
+        Kernel : str
+            'box', 'SPEX', or 'KECK' (same as your function).
+        reference_wavelength : float | None
+            Only needed for 'SPEX' (Gaussian by R at a reference lambda).
+        force : bool
+            If False, refuse to re-apply when already applied.
+        remember_original : bool
+            If True, keep a one-shot backup to allow resolution_reset().
+        """
+        if self._res_applied and not force:
+            print("[resolution_change] Already applied. Use force=True to apply again, or call resolution_reset().")
+            return
+
+        # one-shot backup
+        if remember_original and self._res_backup is None:
+            self._res_backup = self.y.copy()
+
+        # convolve flux
+        y_conv = instrumental_response(self.y, self.x, resolution,
+                                       Kernel=Kernel, reference_wavelength=reference_wavelength)
+
+        self.y = y_conv
+        self._res_applied = True
+        self._res_params = dict(resolution=resolution, Kernel=Kernel,
+                                reference_wavelength=reference_wavelength)
+        # print(f"[resolution_change] Applied ({self._res_params}).")
+
+    def resolution_reset(self):
+        """Restore the pre-convolution y and yerr once (if backup exists)."""
+        if self._res_backup is None:
+            print("[resolution_reset] No backup available (nothing to undo).")
+            return
+        self.y = self._res_backup
+        self._res_backup = None
+        self._res_applied = False
+        self._res_params = None
+        print("[resolution_reset] Restored original spectrum.")
+
 class BTSettlModel(ModelSpectrum):
     """Brown dwarf model spectra.
 

@@ -12,7 +12,8 @@ def chi_squared(ydata: NDArray, yerrdata: NDArray, ymodel: NDArray) -> float:
 def compute_moogstokes_chi2_grid(data: ProplydData, Teff_vals: NDArray, logg_vals:
                                  NDArray, rK_vals: NDArray, vsini_vals: NDArray,
                                  B_vals: NDArray,renormalization: NDArray | None = None,
-                                 shifts: NDArray | None = None, regions: list[int] | None = None) -> NDArray:
+                                 shifts: NDArray | None = None, regions: list[int] | None = None,
+                                 resolution: float | None = None, kernel: str | None = None ) -> NDArray:
     """Computes the chi-squared statistic across a grid of MoogStokes models.
     The models are interpolated to match the x-values of the data.
 
@@ -55,6 +56,7 @@ def compute_moogstokes_chi2_grid(data: ProplydData, Teff_vals: NDArray, logg_val
     chi2 = np.zeros( (len(Teff_vals), len(logg_vals), len(rK_vals), len(vsini_vals), len(B_vals)) )
     chi2_region = np.zeros( (len(Teff_vals), len(logg_vals), len(rK_vals), len(vsini_vals), len(B_vals)) )
 
+
     for nn, r in enumerate(regions):
 
         data.doppler_shift_data(shifts[nn])
@@ -69,6 +71,16 @@ def compute_moogstokes_chi2_grid(data: ProplydData, Teff_vals: NDArray, logg_val
         ydata = np.array(ydata)
         yerrdata = np.array(yerrdata)
 
+        ####### THIS BLOCK NEEDS TO BE COMMENTED OUT ######
+
+        rng = np.random.default_rng(42)
+        noise = rng.normal(loc=0.0, scale=1 / 100., size=len(ydata))
+        ydata = ydata + noise
+        mean_snr = np.nanmean(yerrdata)
+        yerrdata = yerrdata * 100 ** (-1) / mean_snr
+
+        print(np.nanmean(yerrdata))
+
         for i, Teff in enumerate(Teff_vals):
             for j, logg in enumerate(logg_vals):
                 for k, rK in enumerate(rK_vals):
@@ -76,8 +88,13 @@ def compute_moogstokes_chi2_grid(data: ProplydData, Teff_vals: NDArray, logg_val
                         for m, B in enumerate(B_vals):
 
                             model = MoogStokesModel(Teff, logg, rK, B, vsini, r)
+                            if resolution is not None or kernel is not  None:
+                                model.resolution_change(resolution=resolution, Kernel=kernel)
+
                             ymodel = model.interpolate(xdata)
                             ymodel = np.array(ymodel)
+
+
 
                             chi2_region[i, j, k, l, m] = chi_squared(ydata, yerrdata, ymodel)
 

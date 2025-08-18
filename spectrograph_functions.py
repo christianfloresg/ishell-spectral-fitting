@@ -3,7 +3,7 @@ import numpy as np
 from spectra import *
 import matplotlib.pyplot as plt
 
-def instrumental_responce(flux, wavelength, resolution, Kernel='box', reference_wavelength = None):
+def instrumental_response(flux, wavelength, resolution, Kernel='box', reference_wavelength = None):
     """
     Instrumental response of the spectrograph convolution. Two convolution kernels
     are available for convolution, Gaussian and Boxcar.
@@ -22,7 +22,7 @@ def instrumental_responce(flux, wavelength, resolution, Kernel='box', reference_
 
     dx = abs(wavelength[1]-wavelength[0])
 
-    print('wavelength spacing of the model/data is ',dx, 'pixels per wavelength unit, .e.g., angstroms')
+    # print('wavelength spacing of the model/data is ',dx, 'pixels per wavelength unit, .e.g., angstroms')
     length_model = len(flux)
 
     if Kernel == 'box':
@@ -34,7 +34,11 @@ def instrumental_responce(flux, wavelength, resolution, Kernel='box', reference_
 
         sigma_wavelength_unit = reference_wavelength/resolution / (2 * np.sqrt(2 * np.log(2))) ## sigma = FWHM / (2 * np.sqrt(2 * np.log(2)))
         sigma_pixels = sigma_wavelength_unit / dx
-        kernel = Gaussian1DKernel(sigma_pixels ,x_size=length_model)
+
+        x_size = int(8 * sigma_pixels) | 1  # bitwise OR with 1 -> force odd
+        x_size = min(x_size, length_model)  # don't exceed data length
+
+        kernel = Gaussian1DKernel(sigma_pixels, x_size=x_size)
 
         # print(sigma_pixels)
         # plt.plot(kernel_not_normalized, drawstyle='steps')
@@ -98,7 +102,7 @@ if __name__ == "__main__":
     # obj.x *= 1e4  # convert x-axis to angstroms
     print(type(obj.x))
 
-    new_flux = instrumental_responce(flux=obj.y, wavelength=obj.x, resolution=3000, Kernel='SPEX', reference_wavelength=22500)
+    new_flux = instrumental_response(flux=obj.y, wavelength=obj.x, resolution=3000, Kernel='SPEX', reference_wavelength=22500)
 
     plt.figure()
     plt.plot(obj.x, obj.y)
