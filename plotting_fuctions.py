@@ -9,8 +9,10 @@ def plot_chi2_slice(
         param2_vals: np.ndarray,
         param1_name: str,
         param2_name: str,
+        obj_name='obt_name',
         other_axes: dict = None,
         param_labels: dict = None
+
 ):
     """
     Plot the 2D chi-squared grid for any pair of parameters by minimizing over the other axes.
@@ -59,6 +61,9 @@ def plot_chi2_slice(
     )
     plt.legend()
     plt.tight_layout()
+    # plt.savefig(
+    #     f"{outdir}/{obj_name}_Regions{regions}_chi2_Teff{Teff_best}_logg{logg_best}_rK{round(rK_best,2)}_vsini{vsini_best}_B{B_best}.png",
+    #     dpi=120, facecolor="white")
     plt.show()
 
 

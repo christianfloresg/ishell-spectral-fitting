@@ -71,13 +71,13 @@ def compute_moogstokes_chi2_grid(data: ProplydData, Teff_vals: NDArray, logg_val
         ydata = np.array(ydata)
         yerrdata = np.array(yerrdata)
 
-        ####### THIS BLOCK NEEDS TO BE COMMENTED OUT ######
-
-        rng = np.random.default_rng(42)
-        noise = rng.normal(loc=0.0, scale=1 / 100., size=len(ydata))
-        ydata = ydata + noise
-        mean_snr = np.nanmean(yerrdata)
-        yerrdata = yerrdata * 100 ** (-1) / mean_snr
+        # ####### THIS BLOCK NEEDS TO BE COMMENTED OUT ######
+        #
+        # rng = np.random.default_rng(42)
+        # noise = rng.normal(loc=0.0, scale=1 / 100., size=len(ydata))
+        # ydata = ydata + noise
+        # mean_snr = np.nanmean(yerrdata)
+        # yerrdata = yerrdata * 100 ** (-1) / mean_snr
 
         print(np.nanmean(yerrdata))
 
