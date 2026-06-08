@@ -200,14 +200,14 @@ def automatic_wavelength_shifts_values(data: ProplydData, Teff: float, logg:
     The values of the model are not too important as the lines detected and observed are there.
     :param data: ProplydData
         Observed data object.
-    :param Teff: 
-    :param logg: 
-    :param rK: 
-    :param vsini: 
-    :param B: 
-    :param guess_shift: guess shift to run the chi2 minimzation 
-    :param regions: 
-    :return: 
+    :param Teff:
+    :param logg:
+    :param rK:
+    :param vsini:
+    :param B:
+    :param guess_shift: guess shift to run the chi2 minimzation
+    :param regions:
+    :return:
     """
 
     if regions is None:
